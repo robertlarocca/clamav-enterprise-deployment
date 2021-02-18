@@ -1,0 +1,199 @@
+#!/bin/bash
+
+# Copyright (c) 2021 Robert LaRocca http://www.laroccx.com
+
+# Email system administrators when infected files or errors are identified
+# during clamav scheduled filesystem scanning 
+
+# require root privileges
+require_root_privileges() {
+	if [ $UID != 0 ]; then
+		logger -i "Error: $(basename "$0") must be run as root!"
+		echo "Error: $(basename "$0") must be run as root!"
+		exit 1
+	fi
+};
+
+require_root_privileges
+
+#-------------------- Global Variables --------------------#
+
+# development
+script_version=1.3.4
+script_release=beta	# options: beta, devel, release
+
+# email settings
+from_address='noreply@example.com'
+to_address='malware-admin@example.com'
+
+# don't edit these variables unless you know what your doing.
+hostname_long="$(hostname --fqdn)"
+hostname_pretty="$(hostnamectl --pretty)"
+hostname_static="$(hostnamectl --static)"
+temporary_log="$(mktemp)"
+
+# clamscan settings
+nice_integer='10'	# values range from -20 to 19
+root_filesystem='/'
+directory_list_to_scan="/boot /home /root /srv /var"
+excluded_from_scan='/other/'
+clamav_infected_log='/var/log/clamav/infected.log'
+clamav_quarantine='/var/lib/clamav/quarantine'
+
+#-------------------- Global Variables --------------------#
+
+# check package requirements
+if [[ ! -x "$(which mailx)" ]]; then
+	logger -i "Error: $(basename "$0") requires the 'mailutils' package"
+	exit 1
+elif [[ ! -x "$(which clamscan)" ]]; then
+	logger -i "Error: $(basename "$0") requires the 'clamav' package"
+	exit 1
+elif [[ ! -x "$clamav_quarantine" ]]; then
+	logger -i "Error: $(basename "$0") creating the 'clamav' quarantine"
+	mkdir -p "$clamav_quarantine"
+	chown clamav:clamav "$clamav_quarantine"
+	chmod 0755 "$clamav_quarantine"
+fi
+
+full_scan() {
+	logger -i "$(basename "$0") starting full malware scan..."
+	$(which nice) --adjustment=$nice_integer \
+		"$(which clamscan)" --infected --recursive \
+		--exclude-dir=/proc/ \
+		--exclude-dir=/sys/ \
+		--exclude-dir="$excluded_from_scan" \
+		--log="$temporary_log" \
+		"$root_filesystem"
+	# return codes:
+	# 0 - no virus found
+	# 1 - virus(es) found
+	# 2 - Some error(s) occurred
+	scan_results="$?"
+};
+
+quick_scan() {
+	logger -i "$(basename "$0") starting quick malware scan..."
+	$(which nice) --adjustment=$nice_integer \
+		"$(which clamscan)" --infected --recursive \
+		--exclude-dir=/proc/ \
+		--exclude-dir=/sys/ \
+		--exclude-dir="$excluded_from_scan" \
+		--log="$temporary_log" \
+		"$directory_list_to_scan"
+	# return codes:
+	# 0 - no virus found
+	# 1 - virus(es) found
+	# 2 - Some error(s) occurred
+	scan_results="$?"
+};
+
+email_results() {
+	local infected_file_count="$1"
+
+	if [[ "$infected_file_count" -gt "1" ]]; then
+		local plural='s'
+	else
+		local plural=''
+	fi
+
+	mailx -s "Malware Found on $hostname_pretty" -r "$from_address" "$to_address" <<-EOF_XYZ
+	Action is required to remove the $infected_file_count malware threat$plural from this system.
+
+	----------- HOST SUMMARY -----------
+	$(hostnamectl status | sed 's/^[ \t]*//;s/[ \t]*$//')
+
+	---------- MALWARE FOUND -----------
+	$(cat "$temporary_log")
+
+	Get information about the infected files using:
+
+	  \$ sudo stat /path/to/malware
+	  \$ sudo lsof | grep /path/to/malware
+
+	Remove infected files using clamscan or the more traditional 'rm' command:
+
+	  \$ sudo clamscan --remove=yes -v /path/to/malware
+	  \$ sudo rm -i -v /path/to/malware
+
+	See the manpages and online documentation for more information:
+
+	  \$ man clamscan
+	  \$ man clamd.conf
+	  \$ man freshclam
+	  \$ clamonacc --help
+
+	https://www.clamav.net/documents
+	https://manpages.ubuntu.com/manpages/groovy/en/man1/clamscan.1.html
+	https://manpages.ubuntu.com/manpages/groovy/en/man5/clamd.conf.5.html
+
+
+	This email and any files transmitted with it are confidential and intended solely for the use of the individual or entity to whom they are addressed. If you are not the named addressee, you should not disseminate, distribute or copy this email. Please notify the sender immediately and delete all copies of this email from your system. You are notified that disclosing, copying, distributing or taking any action in reliance on the contents of this information is strictly prohibited.
+	EOF_XYZ
+};
+
+email_errors() {
+	local clamscan_errors_exist="$1"
+
+	mailx -s "Malware Found on $hostname_pretty" -r "$from_address" "$to_address" <<-EOF_XYZ
+	You're attention is required.
+
+	This system ($hostname_pretty) might be having issues with ClamAV.
+
+	----------- HOST SUMMARY -----------
+	$(hostnamectl status | sed 's/^[ \t]*//;s/[ \t]*$//')
+
+	---------- ERROR MESSAGES ----------
+	$(cat "$temporary_log")
+
+
+	This email and any files transmitted with it are confidential and intended solely for the use of the individual or entity to whom they are addressed. If you are not the named addressee, you should not disseminate, distribute or copy this email. Please notify the sender immediately and delete all copies of this email from your system. You are notified that disclosing, copying, distributing or taking any action in reliance on the contents of this information is strictly prohibited.
+	EOF_XYZ
+};
+
+email_type() {
+	local infected_file_count=$(grep --count -i -e 'found' "$temporary_log")
+	local clamscan_errors_exist=$(grep --count -i -e 'error' "$temporary_log")
+
+	if [[ "$scan_results" = "1" ]]; then
+		email_results "$infected_file_count"
+	fi
+
+	if [[ "$scan_results" = "2" ]]; then
+		email_errors "$clamscan_errors_exist"
+	fi
+
+	logger -i "Error: $(basename "$0") results=$scan_results infected=$infected_file_count errors=$clamscan_errors_exist"
+	exit 1
+};
+
+remove_temp() {
+	if [[ -x "$temporary_log" ]]; then
+		rm -f "$temporary_log"
+		exit 0
+	fi
+};
+
+case "$1" in
+--full)
+	full_scan
+	email_type
+	remove_temp
+	;;
+--quick)
+	quick_scan
+	email_type
+	remove_temp
+	;;
+*)
+	if [ -n "$1" ]; then
+		echo "$(basename "$0"): invalid option '$1'"
+		# echo "Type '$(basename "$0") --help' for a list of available options."
+	else
+		full_scan
+		email_type
+		remove_temp
+	fi
+	;;
+esac
+

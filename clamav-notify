@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# Copyright (c) 2021 Robert LaRocca http://www.laroccx.com
+
+# Send notifications when infected files are identified during clamav onaccess
+# filesystem scanning 
+
+#-------------------- Global Variables --------------------#
+
+# development
+script_version=1.0.5
+script_release=devel	# options: beta, devel, release
+
+#-------------------- Global Variables --------------------#
+
+log_virus_event() {
+	clamav_infected_log='/var/log/clamav/infected.log'
+	clamav_quarantine='/var/lib/clamav/quarantine'
+
+	if [[ ! -x "/var/log/clamav/infected.log" ]]; then
+		touch /var/log/clamav/infected.log
+		chown clamav:adm /var/log/clamav/infected.log
+		chmod 0640 /var/log/clamav/infected.log
+	fi
+
+	CLAM_VIRUSEVENT_CHECKSUM=$(md5sum "$CLAM_VIRUSEVENT_FILENAME" | cut -f1 -d' ')
+
+	cat <<-EOF_XYZ >> /var/log/clamav/infected.log
+	$(date +"%a %b %d %H:%I:%S %Y") -> $CLAM_VIRUSEVENT_FILENAME: $CLAM_VIRUSEVENT_VIRUSNAME($CLAM_VIRUSEVENT_CHECKSUM) FOUND
+	EOF_XYZ
+};
+
+move_virus_to_quarantine() {
+	clamav_quarantine='/var/lib/clamav/quarantine'
+	
+	if [[ ! -x "$clamav_quarantine" ]]; then
+		mkdir -p "$clamav_quarantine"
+		chown clamav:clamav "$clamav_quarantine"
+		chmod 0755 "$clamav_quarantine"
+	fi
+
+	mv "$CLAM_VIRUSEVENT_FILENAME" "$clamav_quarantine"
+};
+
+send_virus_notification() {
+	notify-send \
+		"Malware Found $CLAM_VIRUSEVENT_VIRUSNAME" \
+		"Located $CLAM_VIRUSEVENT_FILENAME"
+};
+
+log_virus_event
+move_virus_to_quarantine
+send_virus_notification
+

@@ -1,0 +1,35 @@
+#!/bin/bash
+
+# Copyright (c) 2021 Robert LaRocca http://www.laroccx.com
+
+# require root privileges
+require_root_privileges() {
+	if [ $UID != 0 ]; then
+		logger -i "Error: $(basename "$0") must be run as root!"
+		echo "Error: $(basename "$0") must be run as root!"
+		exit 1
+	fi
+};
+
+require_root_privileges
+
+cp -b -S .bak -v $PWD/systemd/clamav-* /usr/lib/systemd/system/
+chown root:root /usr/lib/systemd/system/clamav-*
+chmod 0644 /usr/lib/systemd/system/clamav-*
+
+cp -b -S .bak -v $PWD/clamav-* /usr/local/bin/
+chown root:root /usr/local/bin/clamav-*
+chmod 0755 /usr/local/bin/clamav-*
+
+systemctl enable clamav-daemon.service
+systemctl start clamav-daemon.service
+
+systemctl enable clamav-daemon.socket
+systemctl start clamav-daemon.socket
+
+systemctl enable clamav-freshclam.service
+systemctl start clamav-freshclam.service
+
+systemctl enable clamav-onaccess.service
+systemctl start clamav-onaccess.service
+

@@ -1,0 +1,17 @@
+[Unit]
+Description=Clam AntiVirus onaccess daemon
+Documentation=man:clamd.conf(5) https://www.clamav.net/documents/
+Requires=clamav-daemon.service
+BindsTo=clamav-daemon.service
+After=clamav-daemon.socket clamav-daemon.service syslog.target network.target
+
+[Service]
+ExecStart=/usr/bin/clamonacc --foreground=true
+# Reload the database
+ExecReload=/bin/kill -USR2 $MAINPID
+Restart=on-failure
+RestartSec=5s
+StandardOutput=syslog
+
+[Install]
+WantedBy=multi-user.target
