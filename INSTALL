@@ -17,9 +17,9 @@ cp -b -S .bak -v $PWD/systemd/clamav-* /usr/lib/systemd/system/
 chown root:root /usr/lib/systemd/system/clamav-*
 chmod 0644 /usr/lib/systemd/system/clamav-*
 
-cp -b -S .bak -v $PWD/clamav-* /usr/local/bin/
-chown root:root /usr/local/bin/clamav-*
-chmod 0755 /usr/local/bin/clamav-*
+cp -b -S .bak -v $PWD/clam*-* /usr/local/bin/
+chown root:root /usr/local/bin/clam*-*
+chmod 0755 /usr/local/bin/clam*-*
 
 systemctl enable clamav-daemon.service
 systemctl start clamav-daemon.service
