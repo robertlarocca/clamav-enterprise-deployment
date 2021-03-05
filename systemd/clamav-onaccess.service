@@ -11,7 +11,7 @@ ExecStart=/usr/bin/clamonacc --foreground=true
 ExecReload=/bin/kill -USR2 $MAINPID
 Restart=on-failure
 RestartSec=5s
-StandardOutput=syslog
+StandardOutput=journal
 
 [Install]
 WantedBy=multi-user.target

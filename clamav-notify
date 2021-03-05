@@ -3,52 +3,53 @@
 # Copyright (c) 2021 Robert LaRocca http://www.laroccx.com
 
 # Send notifications when infected files are identified during clamav onaccess
-# filesystem scanning 
+# filesystem scanning
 
 #-------------------- Global Variables --------------------#
 
 # development
-script_version=1.0.5
+script_version=2.1.0
 script_release=devel	# options: beta, devel, release
+
+# virus events and filenames
+clam_virusevent_virusname="$1"
+clam_virusevent_filename="$2"
+clam_virusevent_checksum=$(md5sum "$clam_virusevent_filename" | cut -f1 -d' ')
+
+clamav_infected_log='/var/log/clamav/infected.log'
+clamav_quarantine='/var/lib/clamav/quarantine'
 
 #-------------------- Global Variables --------------------#
 
-log_virus_event() {
-	clamav_infected_log='/var/log/clamav/infected.log'
-	clamav_quarantine='/var/lib/clamav/quarantine'
+if [[ ! -x "$clamav_infected_log" ]]; then
+	touch $clamav_infected_log
+	chown clamav:adm $clamav_infected_log
+	chmod 0640 $clamav_infected_log
+fi
 
-	if [[ ! -x "/var/log/clamav/infected.log" ]]; then
-		touch /var/log/clamav/infected.log
-		chown clamav:adm /var/log/clamav/infected.log
-		chmod 0640 /var/log/clamav/infected.log
-	fi
+cat <<-EOF_XYZ >> $clamav_infected_log
+$(date +"%a %b %d %H:%I:%S %Y") -> $clam_virusevent_filename: $clam_virusevent_virusname($clam_virusevent_checksum) FOUND
+EOF_XYZ
 
-	CLAM_VIRUSEVENT_CHECKSUM=$(md5sum "$CLAM_VIRUSEVENT_FILENAME" | cut -f1 -d' ')
+notify_user=$(who | awk '{print $1}')
 
-	cat <<-EOF_XYZ >> /var/log/clamav/infected.log
-	$(date +"%a %b %d %H:%I:%S %Y") -> $CLAM_VIRUSEVENT_FILENAME: $CLAM_VIRUSEVENT_VIRUSNAME($CLAM_VIRUSEVENT_CHECKSUM) FOUND
-	EOF_XYZ
-};
+DISPLAY=:0
+sudo -u $notify_user -E /usr/bin/notify-send \
+	"Malware Found $clam_virusevent_virusname" \
+	"Located $clam_virusevent_filename"
 
-move_virus_to_quarantine() {
-	clamav_quarantine='/var/lib/clamav/quarantine'
-	
-	if [[ ! -x "$clamav_quarantine" ]]; then
-		mkdir -p "$clamav_quarantine"
-		chown clamav:clamav "$clamav_quarantine"
-		chmod 0755 "$clamav_quarantine"
-	fi
+if [[ ! -x "$clamav_quarantine" ]]; then
+	mkdir -p "$clamav_quarantine"
+	chown clamav:clamav "$clamav_quarantine"
+	chmod 0755 "$clamav_quarantine"
+fi
 
-	mv "$CLAM_VIRUSEVENT_FILENAME" "$clamav_quarantine"
-};
+mv "$clam_virusevent_filename" "$clamav_quarantine"
 
-send_virus_notification() {
-	notify-send \
-		"Malware Found $CLAM_VIRUSEVENT_VIRUSNAME" \
-		"Located $CLAM_VIRUSEVENT_FILENAME"
-};
+cat <<-EOF_XYZ >> $clamav_infected_log
+$(date +"%a %b %d %H:%I:%S %Y") -> $clam_virusevent_filename: Moved to quarantine $clamav_quarantine
+EOF_XYZ
 
-log_virus_event
-move_virus_to_quarantine
-send_virus_notification
-
+# log_virus_event
+# notify_virus_event
+# move_virus_to_quarantine
