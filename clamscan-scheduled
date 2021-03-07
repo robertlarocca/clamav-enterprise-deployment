@@ -79,6 +79,7 @@ full_scan() {
 	logger -i "$(basename "$0") starting full malware scan..."
 	$(which nice) --adjustment=$nice_integer \
 		"$(which clamscan)" --infected --recursive \
+		--exclude-dir="$excluded_from_scan" \
 		--log="$temporary_log" \
 		--file-list="$directory_list_to_scan"
 
@@ -102,6 +103,7 @@ quick_scan() {
 	logger -i "$(basename "$0") starting quick malware scan..."
 	$(which nice) --adjustment=$nice_integer \
 		"$(which clamscan)" --infected --recursive \
+		--exclude-dir="$excluded_from_scan" \
 		--log="$temporary_log" \
 		--file-list="$directory_list_to_scan"
 
