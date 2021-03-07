@@ -3,7 +3,7 @@
 # Copyright (c) 2021 Robert LaRocca http://www.laroccx.com
 
 # Email system administrators when infected files or errors are identified
-# during Clam AntiVirus scheduled filesystem scanning 
+# during Clam AntiVirus scheduled filesystem scanning
 
 # require root privileges
 require_root_privileges() {
@@ -19,7 +19,7 @@ require_root_privileges
 #-------------------- Global Variables --------------------#
 
 # development
-script_version=1.4.3
+script_version=1.5.0
 script_release=beta	# options: beta, devel, release
 
 # email settings
@@ -33,10 +33,10 @@ hostname_pretty="$(hostnamectl --pretty)"
 hostname_static="$(hostnamectl --static)"
 temporary_log="$(mktemp)"
 
-# clamdscan settings
+# clamav settings
 nice_integer='10'	# values range from -20 to 19
 root_filesystem='/'
-directory_list_to_scan="/boot /home /root /srv /var"
+directory_list_to_scan="$(mktemp)"
 excluded_from_scan='/other/'
 clamav_infected_log='/var/log/clamav/infected.log'
 clamav_quarantine='/var/lib/clamav/quarantine'
@@ -54,18 +54,34 @@ elif [[ ! -x "$clamav_quarantine" ]]; then
 	logger -i "Error: $(basename "$0") creating the 'clamav' quarantine"
 	mkdir -p "$clamav_quarantine"
 	chown clamav:clamav "$clamav_quarantine"
-	chmod 0755 "$clamav_quarantine"
+	chmod 0750 "$clamav_quarantine"
 fi
 
 full_scan() {
+	cat <<-EOF_XYZ > "$directory_list_to_scan"
+	/boot/
+	/cdrom/
+	/etc/
+	/home/
+	/lost+found/
+	/media/
+	/mnt/
+	/opt/
+	/root/
+	/run/
+	/snap/
+	/srv/
+	/tmp/
+	/usr/
+	/var/
+	EOF_XYZ
+
 	logger -i "$(basename "$0") starting full malware scan..."
 	$(which nice) --adjustment=$nice_integer \
-		"$(which clamdscan)" --infected --recursive \
-		--exclude-dir=/proc/ \
-		--exclude-dir=/sys/ \
-		--exclude-dir="$excluded_from_scan" \
+		"$(which clamdscan)" --fdpass --infected --multiscan \
 		--log="$temporary_log" \
-		"$root_filesystem"
+		--file-list="$directory_list_to_scan"
+
 	# return codes:
 	# 0 - no virus found
 	# 1 - virus(es) found
@@ -74,14 +90,21 @@ full_scan() {
 };
 
 quick_scan() {
+	cat <<-EOF_XYZ > "$directory_list_to_scan"
+	/boot/
+	/home/
+	/root/
+	/srv/
+	/tmp/
+	/var/
+	EOF_XYZ
+
 	logger -i "$(basename "$0") starting quick malware scan..."
 	$(which nice) --adjustment=$nice_integer \
-		"$(which clamdscan)" --infected --recursive \
-		--exclude-dir=/proc/ \
-		--exclude-dir=/sys/ \
-		--exclude-dir="$excluded_from_scan" \
+		"$(which clamdscan)" --fdpass --infected --multiscan \
 		--log="$temporary_log" \
-		"$directory_list_to_scan"
+		--file-list="$directory_list_to_scan"
+
 	# return codes:
 	# 0 - no virus found
 	# 1 - virus(es) found
@@ -105,7 +128,7 @@ email_results() {
 	$(hostnamectl status | sed 's/^[ \t]*//;s/[ \t]*$//')
 
 	---------- MALWARE FOUND -----------
-	$(cat "$temporary_log")
+	$(tail -n+2 "$temporary_log")
 
 	Get information about the infected files using:
 
@@ -147,10 +170,11 @@ sms_results() {
 	See $clamav_infected_log for more details.
 	EOF_XYZ
 };
-email_errors() {
-	local clamdscan_errors_exist="$1"
 
-	mailx -s "Malware Found on $hostname_pretty" -r "$from_address" "$to_address" <<-EOF_XYZ
+email_errors() {
+	local clamav_errors_exist="$1"
+
+	mailx -s "Malware Error on $hostname_pretty" -r "$from_address" "$to_address" <<-EOF_XYZ
 	Your attention is required.
 
 	This system ($hostname_pretty) might have issues with Clam AntiVirus.
@@ -159,7 +183,7 @@ email_errors() {
 	$(hostnamectl status | sed 's/^[ \t]*//;s/[ \t]*$//')
 
 	---------- ERROR MESSAGES ----------
-	$(cat "$temporary_log")
+	$(tail -n+2 "$temporary_log")
 
 
 	This email and any files transmitted with it are confidential and intended solely for the use of the individual or entity to whom they are addressed. If you are not the named addressee, you should not disseminate, distribute or copy this email. Please notify the sender immediately and delete all copies of this email from your system. You are notified that disclosing, copying, distributing or taking any action in reliance on the contents of this information is strictly prohibited.
@@ -168,7 +192,7 @@ email_errors() {
 
 email_type() {
 	local infected_file_count=$(grep --count -i -e 'found' "$temporary_log")
-	local clamdscan_errors_exist=$(grep --count -i -e 'error' "$temporary_log")
+	local clamav_errors_exist=$(grep --count -i -e 'error' "$temporary_log")
 
 	if [[ "$scan_results" = "1" ]]; then
 		email_results "$infected_file_count"
@@ -178,20 +202,22 @@ email_type() {
 	fi
 
 	if [[ "$scan_results" = "2" ]]; then
-		email_errors "$clamdscan_errors_exist"
+		email_errors "$clamav_errors_exist"
 	fi
 
 	logger -i "Error: $(basename "$0") \
 		results=$scan_results \
 		infected=$infected_file_count \
-		errors=$clamdscan_errors_exist"
-	exit 1
+		errors=$clamav_errors_exist"
 };
 
 remove_temp() {
 	if [[ -x "$temporary_log" ]]; then
 		rm -f "$temporary_log"
-		exit 0
+	fi
+
+	if [[ -x "$directory_list_to_scan" ]]; then
+		rm -f "$directory_list_to_scan"
 	fi
 };
 
