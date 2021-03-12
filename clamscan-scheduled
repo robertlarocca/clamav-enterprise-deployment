@@ -19,11 +19,11 @@ require_root_privileges
 #-------------------- Global Variables --------------------#
 
 # development
-script_version=1.5.0
+script_version=1.5.1
 script_release=beta	# options: beta, devel, release
 
 # email settings
-from_address='noreply@example.com'
+from_address='donotreply@example.com'
 to_address='malware-admin@example.com'
 sms_address='1234567890@txt.att.net'
 
@@ -80,8 +80,8 @@ full_scan() {
 	$(which nice) --adjustment=$nice_integer \
 		"$(which clamscan)" --infected --recursive \
 		--exclude-dir="$excluded_from_scan" \
-		--log="$temporary_log" \
-		--file-list="$directory_list_to_scan"
+		--file-list="$directory_list_to_scan" \
+		| tee -a "$temporary_log"
 
 	# return codes:
 	# 0 - no virus found
@@ -104,8 +104,8 @@ quick_scan() {
 	$(which nice) --adjustment=$nice_integer \
 		"$(which clamscan)" --infected --recursive \
 		--exclude-dir="$excluded_from_scan" \
-		--log="$temporary_log" \
-		--file-list="$directory_list_to_scan"
+		--file-list="$directory_list_to_scan" \
+		| tee -a "$temporary_log"
 
 	# return codes:
 	# 0 - no virus found
@@ -130,7 +130,7 @@ email_results() {
 	$(hostnamectl status | sed 's/^[ \t]*//;s/[ \t]*$//')
 
 	---------- MALWARE FOUND -----------
-	$(tail -n+1 "$temporary_log")
+	$(cat "$temporary_log")
 
 	Get information about the infected files using:
 
@@ -185,7 +185,7 @@ email_errors() {
 	$(hostnamectl status | sed 's/^[ \t]*//;s/[ \t]*$//')
 
 	---------- ERROR MESSAGES ----------
-	$(tail -n+1 "$temporary_log")
+	$(cat "$temporary_log")
 
 
 	This email and any files transmitted with it are confidential and intended solely for the use of the individual or entity to whom they are addressed. If you are not the named addressee, you should not disseminate, distribute or copy this email. Please notify the sender immediately and delete all copies of this email from your system. You are notified that disclosing, copying, distributing or taking any action in reliance on the contents of this information is strictly prohibited.

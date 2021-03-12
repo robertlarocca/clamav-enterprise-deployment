@@ -23,7 +23,7 @@ script_version=1.5.0
 script_release=beta	# options: beta, devel, release
 
 # email settings
-from_address='noreply@example.com'
+from_address='donotreply@example.com'
 to_address='malware-admin@example.com'
 sms_address='1234567890@txt.att.net'
 

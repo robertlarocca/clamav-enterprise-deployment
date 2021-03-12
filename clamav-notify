@@ -8,12 +8,12 @@
 #-------------------- Global Variables --------------------#
 
 # development
-script_version=2.1.0
+script_version=2.1.3
 script_release=devel	# options: beta, devel, release
 
 # virus events and filenames
-clam_virusevent_virusname="$1"
-clam_virusevent_filename="$2"
+clam_virusevent_virusname="$CLAM_VIRUSEVENT_VIRUSNAME"
+clam_virusevent_filename="$CLAM_VIRUSEVENT_FILENAME"
 clam_virusevent_checksum=$(md5sum "$clam_virusevent_filename" | cut -f1 -d' ')
 
 clamav_infected_log='/var/log/clamav/infected.log'
@@ -21,35 +21,39 @@ clamav_quarantine='/var/lib/clamav/quarantine'
 
 #-------------------- Global Variables --------------------#
 
-if [[ ! -x "$clamav_infected_log" ]]; then
+if [[ ! -f "$clamav_infected_log" ]]; then
 	touch $clamav_infected_log
 	chown clamav:adm $clamav_infected_log
 	chmod 0640 $clamav_infected_log
+fi
+
+if [[ ! -d "$clamav_quarantine" ]]; then
+	mkdir -p "$clamav_quarantine"
+	chown clamav:clamav "$clamav_quarantine"
+	chmod 0755 "$clamav_quarantine"
 fi
 
 cat <<-EOF_XYZ >> $clamav_infected_log
 $(date +"%a %b %d %H:%I:%S %Y") -> $clam_virusevent_filename: $clam_virusevent_virusname($clam_virusevent_checksum) FOUND
 EOF_XYZ
 
-notify_user=$(who | awk '{print $1}')
-
-DISPLAY=:0
-sudo -u $notify_user -E /usr/bin/notify-send \
-	"Malware Found $clam_virusevent_virusname" \
-	"Located $clam_virusevent_filename"
-
-if [[ ! -x "$clamav_quarantine" ]]; then
-	mkdir -p "$clamav_quarantine"
-	chown clamav:clamav "$clamav_quarantine"
-	chmod 0755 "$clamav_quarantine"
-fi
-
+# move infected file to quarantine
 mv "$clam_virusevent_filename" "$clamav_quarantine"
 
 cat <<-EOF_XYZ >> $clamav_infected_log
 $(date +"%a %b %d %H:%I:%S %Y") -> $clam_virusevent_filename: Moved to quarantine $clamav_quarantine
 EOF_XYZ
 
-# log_virus_event
-# notify_virus_event
-# move_virus_to_quarantine
+notify_user=$(who | awk '{print $1}')
+notify_display=$(who | awk '{print $2}')
+notify_uid=$(id --user $notify_user)
+
+export DISPLAY="$notify_display"
+export XAUTHORITY="/run/user/$notify_uid/gdm/Xauthority"
+
+$(which wall) -n "Malware Found [$clam_virusevent_virusname] \
+	$(username --fqdn):$clam_virusevent_filename"
+
+sudo -u $notify_user -E $(which notify-send) \
+	"Malware Found $clam_virusevent_virusname" \
+	"Located $clam_virusevent_filename"
