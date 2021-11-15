@@ -6,7 +6,7 @@ BindsTo=clamav-daemon.service
 After=clamav-daemon.socket clamav-daemon.service syslog.target network.target
 
 [Service]
-ExecStart=/usr/bin/clamonacc --foreground=true
+ExecStart=/usr/sbin/clamonacc --foreground=true
 # Reload the database
 ExecReload=/bin/kill -USR2 $MAINPID
 Restart=on-failure
